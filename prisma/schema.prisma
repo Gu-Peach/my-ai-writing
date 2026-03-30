@@ -1,0 +1,171 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// Enums
+// ============================================
+
+enum Role {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+enum CollaboratorStatus {
+  ACTIVE
+  REMOVED
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum GenerationStatus {
+  PENDING
+  GENERATING
+  COMPLETED
+  FAILED
+}
+
+// ============================================
+// Models
+// ============================================
+
+model User {
+  id             String         @id @default(cuid())
+  email          String         @unique
+  name           String?
+  avatarUrl      String?
+  password       String?
+  documents      Document[]
+  collaborations Collaborator[]
+  sentInvites    Invite[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model Document {
+  id      String @id @default(cuid())
+  title   String
+  ydoc    Bytes?
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  // 房间权限配置:允许编辑的角色列表
+  editableRoles Role[] @default([OWNER, EDITOR])
+
+  collaborators Collaborator[]
+  versions      DocumentVersion[]
+  shareLinks    ShareLink[]
+  aiGenerations AIGeneration[]
+  invites       Invite[]
+  inviteLinks   InviteLink[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+}
+
+model Collaborator {
+  id         String             @id @default(cuid())
+  documentId String
+  document   Document           @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role
+  status     CollaboratorStatus @default(ACTIVE)
+  removedBy  String?
+  removedAt  DateTime?
+  createdAt  DateTime           @default(now())
+
+  @@unique([documentId, userId])
+  @@index([documentId])
+  @@index([userId])
+}
+
+model Invite {
+  id         String       @id @default(cuid())
+  documentId String
+  document   Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  inviterId  String
+  inviter    User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+  email      String
+  role       Role
+  token      String       @unique
+  status     InviteStatus @default(PENDING)
+  expiresAt  DateTime?
+  createdAt  DateTime     @default(now())
+
+  @@index([documentId])
+  @@index([token])
+}
+
+model InviteLink {
+  id         String    @id @default(cuid())
+  documentId String
+  document   Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  token      String    @unique
+  role       Role
+  maxUses    Int?
+  usedCount  Int       @default(0)
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([documentId])
+  @@index([token])
+}
+
+model ShareLink {
+  id         String    @id @default(cuid())
+  documentId String
+  document   Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  token      String    @unique
+  role       Role
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([documentId])
+  @@index([token])
+}
+
+model DocumentVersion {
+  id          String   @id @default(cuid())
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  snapshot    Bytes
+  stateVector Bytes
+  label       String?
+  createdBy   String?
+  createdAt   DateTime @default(now())
+
+  @@index([documentId])
+  @@index([createdAt])
+}
+
+model AIGeneration {
+  id          String           @id @default(cuid())
+  documentId  String
+  document    Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  prompt      String           @db.Text
+  outline     Json?
+  status      GenerationStatus
+  result      String?          @db.Text
+  createdAt   DateTime         @default(now())
+  completedAt DateTime?
+
+  @@index([documentId])
+  @@index([status])
+}
